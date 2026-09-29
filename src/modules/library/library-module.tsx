@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { appApi } from "@/lib/api/client";
 import { ModuleCard } from "../common/module-card";
@@ -15,29 +15,84 @@ export function LibraryModule() {
   const [chapterId, setChapterId] = useState("");
   const [title, setTitle] = useState("");
   const [sectionNumber, setSectionNumber] = useState("");
+  const [editingSubtopicId, setEditingSubtopicId] = useState("");
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingSectionNumber, setEditingSectionNumber] = useState("");
 
   const taxonomy = useQuery({
-    queryKey: ["taxonomy-tree", boardId, classId, subjectId],
-    queryFn: () =>
-      appApi.taxonomyTree({
-        boardId: boardId || undefined,
-        classId: classId || undefined,
-        subjectId: subjectId || undefined
-      })
+    queryKey: ["taxonomy-tree"],
+    queryFn: () => appApi.taxonomyTree()
   });
-  const boards = taxonomy.data?.boards ?? [];
-  const selectedBoard = boards.find((row) => row.board_id === boardId) ?? null;
-  const classes = selectedBoard?.classes ?? [];
+
+  const boards = useMemo(() => taxonomy.data?.boards ?? [], [taxonomy.data?.boards]);
+  const classesByBoard = useMemo(() => {
+    const index = new Map<string, NonNullable<(typeof boards)[number]["classes"]>>();
+    boards.forEach((board) => {
+      index.set(board.board_id, board.classes);
+    });
+    return index;
+  }, [boards]);
+  const subjectsByClass = useMemo(() => {
+    const index = new Map<string, NonNullable<(typeof boards)[number]["classes"][number]["subjects"]>>();
+    boards.forEach((board) => {
+      board.classes.forEach((classNode) => {
+        index.set(classNode.class_id, classNode.subjects);
+      });
+    });
+    return index;
+  }, [boards]);
+
+  const selectedBoard = useMemo(() => boards.find((row) => row.board_id === boardId) ?? null, [boards, boardId]);
+  const classes = useMemo(() => (boardId ? classesByBoard.get(boardId) ?? [] : []), [boardId, classesByBoard]);
   const selectedClass = classes.find((row) => row.class_id === classId) ?? null;
-  const subjects = selectedClass?.subjects ?? [];
+  const subjects = useMemo(() => (classId ? subjectsByClass.get(classId) ?? [] : []), [classId, subjectsByClass]);
   const selectedSubject = subjects.find((row) => row.subject_id === subjectId) ?? null;
-  const chapters = selectedSubject?.chapters ?? [];
+  const chapters = useMemo(() => selectedSubject?.chapters ?? [], [selectedSubject]);
+
+  useEffect(() => {
+    if (boardId && !boards.some((board) => board.board_id === boardId)) {
+      setBoardId("");
+      setClassId("");
+      setSubjectId("");
+      setChapterId("");
+    }
+  }, [boardId, boards]);
+
+  useEffect(() => {
+    if (classId && !classes.some((row) => row.class_id === classId)) {
+      setClassId("");
+      setSubjectId("");
+      setChapterId("");
+    }
+  }, [classId, classes]);
+
+  useEffect(() => {
+    if (subjectId && !subjects.some((row) => row.subject_id === subjectId)) {
+      setSubjectId("");
+      setChapterId("");
+    }
+  }, [subjectId, subjects]);
+
+  useEffect(() => {
+    if (chapterId && !chapters.some((row) => row.chapter_id === chapterId)) {
+      setChapterId("");
+    }
+  }, [chapterId, chapters]);
 
   const subtopicsQuery = useQuery({
     queryKey: ["subject-subtopics", subjectId],
     queryFn: () => appApi.subjectSubtopics(subjectId),
     enabled: Boolean(subjectId)
   });
+
+  useEffect(() => {
+    if (!classId || subjectId || subjects.length === 0) return;
+    const firstSubjectId = subjects[0].subject_id;
+    void queryClient.prefetchQuery({
+      queryKey: ["subject-subtopics", firstSubjectId],
+      queryFn: () => appApi.subjectSubtopics(firstSubjectId)
+    });
+  }, [classId, subjectId, subjects, queryClient]);
 
   const createSubtopic = useMutation({
     mutationFn: appApi.createSubtopic,
@@ -53,6 +108,9 @@ export function LibraryModule() {
     mutationFn: ({ subtopicId, nextTitle, nextSectionNumber }: { subtopicId: string; nextTitle: string; nextSectionNumber: string }) =>
       appApi.updateSubtopic(subtopicId, { title: nextTitle, sectionNumber: nextSectionNumber }),
     onSuccess: async () => {
+      setEditingSubtopicId("");
+      setEditingTitle("");
+      setEditingSectionNumber("");
       await queryClient.invalidateQueries({ queryKey: ["subject-subtopics", subjectId] });
       await queryClient.invalidateQueries({ queryKey: ["taxonomy-tree"] });
     }
@@ -73,6 +131,12 @@ export function LibraryModule() {
     chapterNumber: chapter.chapter_number,
     items: subtopics.filter((row) => row.chapter_id === chapter.chapter_id)
   }));
+
+  const beginEdit = (row: { subtopic_id: string; subtopic_title?: string; title?: string; section_number?: string | null }) => {
+    setEditingSubtopicId(row.subtopic_id);
+    setEditingTitle((row.subtopic_title || row.title || "").trim());
+    setEditingSectionNumber((row.section_number || "").trim());
+  };
 
   return (
     <ModuleCard title="Library Explorer" description="Manage Board -> Class -> Subject -> Subtopic hierarchy.">
@@ -194,31 +258,74 @@ export function LibraryModule() {
                   rows={group.items}
                   empty="No subtopics in this chapter."
                   columns={[
-                    { key: "title", label: "Subtopic", render: (row) => display(row.subtopic_title || row.title) },
-                    { key: "section", label: "Section #", render: (row) => display(row.section_number ?? "") },
+                    {
+                      key: "title",
+                      label: "Subtopic",
+                      render: (row) =>
+                        editingSubtopicId === row.subtopic_id ? (
+                          <input
+                            value={editingTitle}
+                            onChange={(event) => setEditingTitle(event.target.value)}
+                            className="w-full rounded border px-2 py-1 text-xs"
+                          />
+                        ) : (
+                          display(row.subtopic_title || row.title)
+                        )
+                    },
+                    {
+                      key: "section",
+                      label: "Section #",
+                      render: (row) =>
+                        editingSubtopicId === row.subtopic_id ? (
+                          <input
+                            value={editingSectionNumber}
+                            onChange={(event) => setEditingSectionNumber(event.target.value)}
+                            className="w-full rounded border px-2 py-1 text-xs"
+                          />
+                        ) : (
+                          display(row.section_number ?? "")
+                        )
+                    },
                     { key: "depth", label: "Depth", render: (row) => String(row.depth) },
                     {
                       key: "actions",
                       label: "Actions",
                       render: (row) => (
                         <div className="flex gap-2">
+                          {editingSubtopicId === row.subtopic_id ? (
+                            <>
+                              <button
+                                className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-60"
+                                disabled={!editingTitle.trim() || updateSubtopic.isPending}
+                                onClick={() =>
+                                  updateSubtopic.mutate({
+                                    subtopicId: row.subtopic_id,
+                                    nextTitle: editingTitle.trim(),
+                                    nextSectionNumber: editingSectionNumber.trim()
+                                  })
+                                }
+                              >
+                                Save
+                              </button>
+                              <button
+                                className="rounded bg-slate-200 px-2 py-1 text-xs"
+                                onClick={() => {
+                                  setEditingSubtopicId("");
+                                  setEditingTitle("");
+                                  setEditingSectionNumber("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button className="rounded bg-slate-200 px-2 py-1 text-xs" onClick={() => beginEdit(row)}>
+                              Edit
+                            </button>
+                          )}
                           <button
-                            className="rounded bg-slate-200 px-2 py-1 text-xs"
-                            onClick={() => {
-                              const nextTitle = window.prompt("Subtopic title", row.subtopic_title || row.title || "");
-                              if (!nextTitle || !nextTitle.trim()) return;
-                              const nextSection = window.prompt("Section number", row.section_number || "") ?? "";
-                              updateSubtopic.mutate({
-                                subtopicId: row.subtopic_id,
-                                nextTitle: nextTitle.trim(),
-                                nextSectionNumber: nextSection.trim()
-                              });
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="rounded bg-red-600 px-2 py-1 text-xs text-white"
+                            className="rounded bg-red-600 px-2 py-1 text-xs text-white disabled:opacity-60"
+                            disabled={editingSubtopicId === row.subtopic_id}
                             onClick={() => {
                               if (!window.confirm("Hide this subtopic from learner view?")) return;
                               deleteSubtopic.mutate(row.subtopic_id);
