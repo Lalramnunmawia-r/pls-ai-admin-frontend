@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { appApi } from "@/lib/api/client";
 import { ModuleCard } from "../common/module-card";
-import { JsonView } from "../common/json-view";
-import { SimpleTable } from "../common/simple-table";
+import { RecordTable } from "../common/record-table";
+import { asRows, display, text, whenField, type Row } from "../common/display";
+
+type ReportRow = Row & { chapterId: string };
 
 export function ReportsModule() {
   const [chapterIdsRaw, setChapterIdsRaw] = useState("");
@@ -19,6 +21,11 @@ export function ReportsModule() {
     queryFn: () => appApi.reports(chapterIds),
     enabled: false
   });
+
+  const reports: ReportRow[] = (data?.data.items ?? []).flatMap((item) =>
+    asRows(item.payload).map((report) => ({ ...report, chapterId: item.chapterId }))
+  );
+  const failed = data?.data.failedChapterIds ?? [];
 
   return (
     <ModuleCard title="Reports Inbox" description="Moderate content reports across multiple chapters.">
@@ -37,12 +44,30 @@ export function ReportsModule() {
       {error && <p className="text-sm text-red-600">Failed to load reports.</p>}
       {data && (
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">Failed chapter fetches: {data.data.failedChapterIds.length}</p>
-          <SimpleTable items={data.data.items} />
-          <details>
-            <summary className="cursor-pointer text-sm text-slate-700">Raw payload</summary>
-            <JsonView value={data.data} />
-          </details>
+          {failed.length > 0 && (
+            <p className="text-sm text-red-600">
+              Could not load reports for {failed.length === 1 ? "1 chapter" : `${failed.length} chapters`}:{" "}
+              {failed.join(", ")}
+            </p>
+          )}
+          <RecordTable
+            rows={reports}
+            empty="No reports found."
+            columns={[
+              {
+                key: "chapter",
+                label: "Chapter",
+                render: (row) => <span className="break-all">{row.chapterId}</span>
+              },
+              {
+                key: "reporter",
+                label: "Reporter",
+                render: (row) => display(text(row, "reporter_name") || text(row, "reporter_email"))
+              },
+              { key: "summary", label: "Summary", render: (row) => display(text(row, "summary")) },
+              { key: "reported", label: "Reported", render: (row) => whenField(row, "reported_at") }
+            ]}
+          />
         </div>
       )}
     </ModuleCard>

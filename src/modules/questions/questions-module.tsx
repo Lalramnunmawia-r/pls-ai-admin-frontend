@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { appApi } from "@/lib/api/client";
 import { ModuleCard } from "../common/module-card";
-import { JsonView } from "../common/json-view";
-import { SimpleTable } from "../common/simple-table";
+import { RecordTable } from "../common/record-table";
+import { StatusBadge } from "../common/status-badge";
+import { display, isRow, text } from "../common/display";
 
 export function QuestionsModule() {
   const [chapterId, setChapterId] = useState("");
@@ -14,6 +15,7 @@ export function QuestionsModule() {
     queryFn: () => appApi.questions(chapterId),
     enabled: false
   });
+  const sets = (data?.data.items ?? []).filter(isRow);
 
   return (
     <ModuleCard title="Question Bank" description="Load and review chapter practice sets and PYQ assets.">
@@ -33,11 +35,16 @@ export function QuestionsModule() {
       {data && (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">Chapter: {data.data.chapterId}</p>
-          <SimpleTable items={data.data.items} />
-          <details>
-            <summary className="cursor-pointer text-sm text-slate-700">Raw payload</summary>
-            <JsonView value={data.data} />
-          </details>
+          <RecordTable
+            rows={sets}
+            empty="No practice sets found."
+            columns={[
+              { key: "label", label: "Label", render: (row) => display(text(row, "label")) },
+              { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
+              { key: "items", label: "Items", render: (row) => display(text(row, "item_count")) },
+              { key: "error", label: "Error", render: (row) => display(text(row, "error_message")) }
+            ]}
+          />
         </div>
       )}
     </ModuleCard>

@@ -8,6 +8,60 @@ const apiBaseUrl = (process.env.NEXT_PUBLIC_LMS_AI_API_URL || "http://localhost:
 );
 
 type Envelope<T> = { data: T };
+type TaxonomySubtopicNode = {
+  id: string;
+  subtopic_id: string;
+  section_id: string;
+  chapter_id: string;
+  chapter_title: string;
+  title: string;
+  subtopic_title: string;
+  section_number?: string | null;
+  sort_order: number;
+  depth: number;
+  parent_subtopic_id?: string | null;
+  children: TaxonomySubtopicNode[];
+};
+type TaxonomyChapterNode = {
+  id: string;
+  chapter_id: string;
+  title: string;
+  chapter_title: string;
+  chapter_number: number;
+  subject_id: string;
+  subtopics: TaxonomySubtopicNode[];
+};
+type TaxonomySubjectNode = {
+  id: string;
+  subject_id: string;
+  name: string;
+  code: string;
+  sort_order: number;
+  grade_id: string;
+  class_id: string;
+  grade_name: string;
+  class_name: string;
+  chapters: TaxonomyChapterNode[];
+};
+type TaxonomyClassNode = {
+  id: string;
+  class_id: string;
+  grade_id: string;
+  name: string;
+  class_name: string;
+  grade_name: string;
+  numeric_value: number;
+  sort_order: number;
+  subjects: TaxonomySubjectNode[];
+};
+type TaxonomyBoardNode = {
+  id: string;
+  board_id: string;
+  name: string;
+  code: string;
+  sort_order: number;
+  classes: TaxonomyClassNode[];
+};
 
 async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -146,16 +200,102 @@ export const appApi = {
     return { data: { items, failedChapterIds } };
   },
   jobs: async () => {
-    const [textbooks, resources] = await Promise.allSettled([
+    const [textbooksResult, resourcesResult] = await Promise.allSettled([
       withAuth<unknown>("/admin/textbooks?skip=0&limit=10"),
       withAuth<unknown>("/admin/content/resources")
     ]);
+    const textbookPayload = textbooksResult.status === "fulfilled" ? textbooksResult.value : null;
+    const resourcePayload = resourcesResult.status === "fulfilled" ? resourcesResult.value : null;
+    const textbookRecord =
+      textbookPayload && typeof textbookPayload === "object" && !Array.isArray(textbookPayload)
+        ? (textbookPayload as Record<string, unknown>)
+        : null;
+    const textbooks = asArray(textbookPayload);
+    const textbookTotal = typeof textbookRecord?.total === "number" ? textbookRecord.total : textbooks.length;
     return {
       data: {
-        generatedAt: Date.now(),
-        textbooks: textbooks.status === "fulfilled" ? textbooks.value : { detail: "textbook fetch failed" },
-        resources: resources.status === "fulfilled" ? resources.value : { detail: "resource fetch failed" }
+        generatedAt: new Date().toISOString(),
+        textbooks,
+        textbookTotal,
+        resources: asArray(resourcePayload),
+        textbookError: textbooksResult.status === "rejected",
+        resourceError: resourcesResult.status === "rejected"
       }
     };
-  }
+  },
+  taxonomyTree: (params?: { boardId?: string; classId?: string; subjectId?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.boardId) query.set("board_id", params.boardId);
+    if (params?.classId) query.set("class_id", params.classId);
+    if (params?.subjectId) query.set("subject_id", params.subjectId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return withAuth<{ generated_at: string; boards: TaxonomyBoardNode[] }>(`/admin/taxonomy/tree${suffix}`);
+  },
+  subjectSubtopics: (subjectId: string) =>
+    withAuth<
+      Array<{
+        id: string;
+        subtopic_id: string;
+        section_id: string;
+        chapter_id: string;
+        chapter_title: string;
+        title: string;
+        subtopic_title: string;
+        section_number?: string | null;
+        sort_order: number;
+        depth: number;
+        parent_subtopic_id?: string | null;
+        subject_id: string;
+        subject_name: string;
+        grade_id?: string | null;
+        class_id?: string | null;
+        grade_name?: string | null;
+        class_name?: string | null;
+      }>
+    >(`/admin/subjects/${subjectId}/subtopics`),
+  createSubtopic: (input: {
+    chapterId: string;
+    title: string;
+    sectionNumber?: string;
+    description?: string;
+    parentSubtopicId?: string;
+  }) =>
+    withAuth<{
+      id: string;
+      subtopic_id: string;
+      section_id: string;
+      chapter_id: string;
+      title: string;
+      subtopic_title: string;
+      section_number?: string | null;
+    }>("/admin/subtopics", {
+      method: "POST",
+      body: JSON.stringify({
+        chapter_id: input.chapterId,
+        title: input.title,
+        section_number: input.sectionNumber ?? "",
+        description: input.description ?? "",
+        parent_subtopic_id: input.parentSubtopicId ?? null
+      })
+    }),
+  updateSubtopic: (subtopicId: string, input: { title?: string; sectionNumber?: string }) =>
+    withAuth<{
+      id: string;
+      subtopic_id: string;
+      section_id: string;
+      chapter_id: string;
+      title: string;
+      subtopic_title: string;
+      section_number?: string | null;
+    }>(`/admin/subtopics/${subtopicId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        title: input.title,
+        section_number: input.sectionNumber
+      })
+    }),
+  deleteSubtopic: (subtopicId: string) =>
+    withAuth<{ message: string; subtopic_id: string; section_id: string }>(`/admin/subtopics/${subtopicId}`, {
+      method: "DELETE"
+    })
 };

@@ -3,14 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { appApi } from "@/lib/api/client";
 import { ModuleCard } from "../common/module-card";
-import { JsonView } from "../common/json-view";
-import { SimpleTable } from "../common/simple-table";
+import { RecordTable } from "../common/record-table";
+import { StatusBadge } from "../common/status-badge";
+import { display, isRow, text } from "../common/display";
 
 export function ResourcesModule() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["resources"],
     queryFn: () => appApi.resources("")
   });
+  const resources = (data?.data.items ?? []).filter(isRow);
 
   return (
     <ModuleCard title="Resource Manager" description="Review uploaded resources and indexing health.">
@@ -19,11 +21,16 @@ export function ResourcesModule() {
       {data && (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">Total resources: {data.data.count}</p>
-          <SimpleTable items={data.data.items} />
-          <details>
-            <summary className="cursor-pointer text-sm text-slate-700">Raw payload</summary>
-            <JsonView value={data.data} />
-          </details>
+          <RecordTable
+            rows={resources}
+            empty="No resources found."
+            columns={[
+              { key: "title", label: "Title", render: (row) => display(text(row, "title")) },
+              { key: "type", label: "Type", render: (row) => display(text(row, "resource_type")) },
+              { key: "label", label: "Label", render: (row) => display(text(row, "label")) },
+              { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> }
+            ]}
+          />
         </div>
       )}
     </ModuleCard>

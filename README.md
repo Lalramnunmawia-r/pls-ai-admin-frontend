@@ -35,3 +35,16 @@ Body: { "email": "...", "name": "...", "password": "..." }
 ```
 
 Set `AI_ADMIN_JWT_SECRET`, `AI_ADMIN_BOOTSTRAP_KEY`, and CORS origin `http://localhost:3005` on the microservice.
+
+## Taxonomy management
+
+Library now uses the taxonomy flow:
+
+- Board -> Class -> Subject selectors
+- Subject-level subtopic management grouped by chapter
+- Subtopic CRUD via:
+  - `GET /api/v1/admin/taxonomy/tree`
+  - `GET /api/v1/admin/subjects/{subject_id}/subtopics`
+  - `POST|PUT|DELETE /api/v1/admin/subtopics/*`
+
+Compatibility note: backend keeps legacy grade/section endpoints active; taxonomy responses expose class/subtopic naming for UI while still mapping to grade/section storage.
