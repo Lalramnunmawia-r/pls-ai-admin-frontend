@@ -96,6 +96,27 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+function omitContentType(headers?: HeadersInit): HeadersInit | undefined {
+  if (!headers) return undefined;
+  const entries = Object.entries(headers as Record<string, string>).filter(
+    ([key]) => key.toLowerCase() !== "content-type"
+  );
+  return Object.fromEntries(entries);
+}
+
+async function parseApiError(response: Response): Promise<string> {
+  const payload = await readJson(response);
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    if (typeof record.detail === "string" && record.detail.trim()) return record.detail;
+    if (typeof record.message === "string" && record.message.trim()) return record.message;
+  }
+  if (response.status === 401) return "Unauthorized";
+  if (response.status === 403) return "Forbidden";
+  if (response.status === 404) return "Not found";
+  return `Request failed (${response.status})`;
+}
+
 async function withAuth<T>(path: string, init?: RequestInit): Promise<T> {
   const session = getSession();
   if (!session) throw new Error("Not authenticated");
@@ -117,7 +138,35 @@ async function withAuth<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     if (response.status === 401) clearSession();
-    throw new Error("Request failed");
+    throw new Error(await parseApiError(response));
+  }
+  return (await readJson(response)) as T;
+}
+
+async function withAuthFormData<T>(path: string, body: FormData, init?: Omit<RequestInit, "body">): Promise<T> {
+  const session = getSession();
+  if (!session) throw new Error("Not authenticated");
+  const response = await request(path, {
+    ...init,
+    method: init?.method ?? "POST",
+    body,
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`,
+      ...(omitContentType(init?.headers) ?? {})
+    }
+  });
+  if (response.status === 401 && session.refreshToken) {
+    const refreshed = await authApi.refresh(session.refreshToken);
+    setSession({
+      ...session,
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken
+    });
+    return withAuthFormData<T>(path, body, init);
+  }
+  if (!response.ok) {
+    if (response.status === 401) clearSession();
+    throw new Error(await parseApiError(response));
   }
   return (await readJson(response)) as T;
 }
@@ -297,5 +346,121 @@ export const appApi = {
   deleteSubtopic: (subtopicId: string) =>
     withAuth<{ message: string; subtopic_id: string; section_id: string }>(`/admin/subtopics/${subtopicId}`, {
       method: "DELETE"
+    }),
+  examPreps: () =>
+    withAuth<
+      Array<{
+        id: string;
+        name: string;
+        code: string;
+      }>
+    >("/admin/exam-preps"),
+  examPrepYears: (examPrepId: string) =>
+    withAuth<
+      Array<{
+        id: string;
+        exam_prep_id: string;
+        calendar_year: number;
+      }>
+    >(`/admin/exam-preps/${examPrepId}/years`),
+  examPrepSubjects: (examPrepId: string) =>
+    withAuth<
+      Array<{
+        id: string;
+        name: string;
+        exam_prep_id?: string | null;
+        exam_prep_year_id?: string | null;
+      }>
+    >(`/admin/exam-preps/${examPrepId}/subjects`),
+  uploadTextbook: async (input: {
+    file: File;
+    title: string;
+    subjectId?: string;
+    examPrepYearId?: string;
+    publisher?: string;
+    edition?: string;
+    chapterNumber?: number;
+    chapterName?: string;
+    calendarYear?: number;
+  }) => {
+    const body = new FormData();
+    body.append("file", input.file);
+    body.append("title", input.title);
+    if (input.subjectId) body.append("subject_id", input.subjectId);
+    if (input.examPrepYearId) body.append("exam_prep_year_id", input.examPrepYearId);
+    if (input.publisher) body.append("publisher", input.publisher);
+    if (input.edition) body.append("edition", input.edition);
+    if (typeof input.chapterNumber === "number") body.append("chapter_number", String(input.chapterNumber));
+    if (input.chapterName) body.append("chapter_name", input.chapterName);
+    if (typeof input.calendarYear === "number") body.append("calendar_year", String(input.calendarYear));
+    return withAuthFormData<unknown>("/admin/textbooks/upload", body);
+  },
+  uploadExamPrepPaper: async (input: {
+    file: File;
+    examPrepId: string;
+    examPrepYearId: string;
+    subjectId: string;
+    calendarYear: number;
+    title: string;
+  }) => {
+    const body = new FormData();
+    body.append("file", input.file);
+    body.append("exam_prep_id", input.examPrepId);
+    body.append("exam_prep_year_id", input.examPrepYearId);
+    body.append("subject_id", input.subjectId);
+    body.append("calendar_year", String(input.calendarYear));
+    body.append("title", input.title);
+    return withAuthFormData<unknown>("/admin/exam-prep-papers/upload", body);
+  },
+  uploadResourceFile: async (input: {
+    file: File;
+    title: string;
+    label?: string;
+    chapterId?: string;
+    sectionId?: string;
+  }) => {
+    const body = new FormData();
+    body.append("file", input.file);
+    body.append("title", input.title);
+    body.append("label", input.label ?? "reference");
+    if (input.chapterId) body.append("chapter_id", input.chapterId);
+    if (input.sectionId) body.append("section_id", input.sectionId);
+    return withAuthFormData<unknown>("/admin/content/resources/upload-file", body);
+  },
+  uploadResourceYouTube: (input: {
+    title: string;
+    youtubeUrl: string;
+    metadataText?: string;
+    label?: string;
+    chapterId?: string;
+    sectionId?: string;
+  }) =>
+    withAuth<unknown>("/admin/content/resources/youtube", {
+      method: "POST",
+      body: JSON.stringify({
+        title: input.title,
+        youtube_url: input.youtubeUrl,
+        metadata_text: input.metadataText ?? "",
+        label: input.label ?? "video",
+        chapter_id: input.chapterId ?? null,
+        section_id: input.sectionId ?? null
+      })
+    }),
+  uploadResourceLink: (input: {
+    title: string;
+    url: string;
+    label?: string;
+    chapterId?: string;
+    sectionId?: string;
+  }) =>
+    withAuth<unknown>("/admin/content/resources/link", {
+      method: "POST",
+      body: JSON.stringify({
+        title: input.title,
+        url: input.url,
+        label: input.label ?? "reference",
+        chapter_id: input.chapterId ?? null,
+        section_id: input.sectionId ?? null
+      })
     })
 };
