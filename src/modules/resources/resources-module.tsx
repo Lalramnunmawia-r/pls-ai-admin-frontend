@@ -11,7 +11,11 @@ import {
 import { ModuleCard } from "../common/module-card";
 import { RecordTable } from "../common/record-table";
 import { StatusBadge } from "../common/status-badge";
-import { display, isRow, text } from "../common/display";
+import { display, isRow, text, type Row } from "../common/display";
+
+function resourceViewUrl(row: Row): string {
+  return text(row, "file_url") || text(row, "youtube_url") || text(row, "external_url");
+}
 
 export function ResourcesModule() {
   const queryClient = useQueryClient();
@@ -88,6 +92,20 @@ export function ResourcesModule() {
     onError: (err) => {
       setSuccessMessage("");
       setErrorMessage(err instanceof Error ? err.message : "Upload failed");
+    }
+  });
+
+  const deleteResourceMutation = useMutation({
+    mutationFn: appApi.deleteResource,
+    onSuccess: async () => {
+      setSuccessMessage("Resource deleted.");
+      setErrorMessage("");
+      await queryClient.invalidateQueries({ queryKey: ["resources"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+    onError: (err) => {
+      setSuccessMessage("");
+      setErrorMessage(err instanceof Error ? err.message : "Delete failed");
     }
   });
 
@@ -359,9 +377,45 @@ export function ResourcesModule() {
             empty="No resources found."
             columns={[
               { key: "title", label: "Title", render: (row) => display(text(row, "title")) },
+              { key: "hierarchy", label: "Hierarchy", render: (row) => display(text(row, "hierarchy_path")) },
               { key: "type", label: "Type", render: (row) => display(text(row, "resource_type")) },
               { key: "label", label: "Label", render: (row) => display(text(row, "label")) },
-              { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> }
+              { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (row) => {
+                  const id = text(row, "id");
+                  const viewUrl = resourceViewUrl(row);
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {viewUrl ? (
+                        <a
+                          href={viewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded bg-slate-900 px-2 py-1 text-xs text-white"
+                        >
+                          View
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      )}
+                      <button
+                        className="rounded bg-red-600 px-2 py-1 text-xs text-white disabled:opacity-60"
+                        disabled={!id || deleteResourceMutation.isPending}
+                        onClick={() => {
+                          if (!id) return;
+                          if (!window.confirm("Delete this resource from storage, search index, and the database?")) return;
+                          deleteResourceMutation.mutate(id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  );
+                }
+              }
             ]}
           />
         </div>

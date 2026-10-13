@@ -323,6 +323,7 @@ export function IngestionModule() {
             empty="No textbooks found."
             columns={[
               { key: "title", label: "Title", render: (row) => display(text(row, "title")) },
+              { key: "hierarchy", label: "Hierarchy", render: (row) => display(text(row, "hierarchy_path")) },
               { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
               { key: "publisher", label: "Publisher", render: (row) => display(text(row, "publisher")) },
               { key: "edition", label: "Edition", render: (row) => display(text(row, "edition")) },

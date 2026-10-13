@@ -462,5 +462,9 @@ export const appApi = {
         chapter_id: input.chapterId ?? null,
         section_id: input.sectionId ?? null
       })
+    }),
+  deleteResource: (resourceId: string) =>
+    withAuth<{ message: string }>(`/admin/content/resources/${resourceId}`, {
+      method: "DELETE"
     })
 };

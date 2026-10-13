@@ -40,6 +40,7 @@ export function QuestionsModule() {
             empty="No practice sets found."
             columns={[
               { key: "label", label: "Label", render: (row) => display(text(row, "label")) },
+              { key: "hierarchy", label: "Hierarchy", render: (row) => display(text(row, "hierarchy_path")) },
               { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
               { key: "items", label: "Items", render: (row) => display(text(row, "item_count")) },
               { key: "error", label: "Error", render: (row) => display(text(row, "error_message")) }

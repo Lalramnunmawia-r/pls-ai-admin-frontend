@@ -49,6 +49,7 @@ export function DashboardModule() {
               empty="No textbooks found."
               columns={[
                 { key: "title", label: "Title", render: (row) => display(text(row, "title")) },
+                { key: "hierarchy", label: "Hierarchy", render: (row) => display(text(row, "hierarchy_path")) },
                 { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
                 { key: "publisher", label: "Publisher", render: (row) => display(text(row, "publisher")) },
                 { key: "edition", label: "Edition", render: (row) => display(text(row, "edition")) },
@@ -85,6 +86,7 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
 
 const resourceColumns = [
   { key: "title", label: "Title", render: (row: Row) => display(text(row, "title")) },
+  { key: "hierarchy", label: "Hierarchy", render: (row: Row) => display(text(row, "hierarchy_path")) },
   { key: "type", label: "Type", render: (row: Row) => display(text(row, "resource_type")) },
   { key: "label", label: "Label", render: (row: Row) => display(text(row, "label")) },
   { key: "status", label: "Status", render: (row: Row) => <StatusBadge status={text(row, "status")} /> }
