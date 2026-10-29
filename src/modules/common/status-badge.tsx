@@ -1,21 +1,22 @@
 "use client";
 
-const tones: Record<string, string> = {
-  approved: "bg-emerald-100 text-emerald-800",
-  completed: "bg-emerald-100 text-emerald-800",
-  ready: "bg-emerald-100 text-emerald-800",
-  failed: "bg-red-100 text-red-800",
-  review: "bg-amber-100 text-amber-800",
-  processing: "bg-sky-100 text-sky-800",
-  pending: "bg-amber-100 text-amber-800",
-  rejected: "bg-red-100 text-red-800",
-  archived: "bg-slate-200 text-slate-700"
+import { StatusChip, type Tone } from "@/components/ui/badge";
+
+const tones: Record<string, Tone> = {
+  approved: "success",
+  completed: "success",
+  ready: "success",
+  review: "warning",
+  pending: "warning",
+  processing: "info",
+  failed: "danger",
+  rejected: "danger",
+  archived: "neutral"
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const key = status.trim().toLowerCase();
-  if (!key) return <span className="text-slate-400">—</span>;
-  const tone = tones[key] ?? "bg-slate-100 text-slate-700";
+  if (!key) return <span className="text-ink-subtle">—</span>;
   const label = key.charAt(0).toUpperCase() + key.slice(1);
-  return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{label}</span>;
+  return <StatusChip tone={tones[key] ?? "neutral"}>{label}</StatusChip>;
 }

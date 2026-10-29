@@ -1,8 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, FolderTree, SearchX } from "lucide-react";
 import { contentApi, flattenSubtopics, qk, type V2Class } from "@/lib/api/admin-v2";
-import { inputClass } from "@/components/ui/form";
+import { SelectField } from "@/components/ui/form";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { EmptyState, Notice, PageContainer, PageHeader, SkeletonList } from "@/components/ui/layout";
 import { useSelection, type Selection } from "./selection";
 import { TaxonomyTree } from "./taxonomy-tree";
 import { ClassPanel } from "./panels/class-panel";
@@ -22,35 +26,35 @@ export function ContentModule() {
   const classes = tree.data?.classes ?? [];
 
   return (
-    <div className="flex min-h-[70vh] flex-col gap-4 lg:flex-row">
-      <aside className="shrink-0 space-y-3 lg:w-72 lg:border-r lg:pr-4">
-        {(tree.data?.boards.length ?? 0) > 1 && (
-          <label className="block space-y-1">
-            <span className="text-xs font-medium text-slate-500">Curriculum</span>
-            <select value={boardId} onChange={(e) => select({ board: e.target.value })} className={inputClass}>
-              {tree.data?.boards.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {tree.isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-        {tree.error && <p className="text-sm text-red-600">Failed to load classes.</p>}
-        {tree.data && tree.data.boards.length === 0 && (
-          <p className="text-sm text-slate-500">No curriculum (board) exists yet. Ask a super admin to create one.</p>
-        )}
-        {tree.data && boardId && (
-          <div className="max-h-[75vh] overflow-y-auto">
-            <TaxonomyTree boardId={boardId} classes={classes} selection={selection} onSelect={select} />
-          </div>
-        )}
-      </aside>
-      <section className="min-w-0 flex-1">
-        {tree.data && <SelectedPanel selection={selection} select={select} classes={classes} />}
-      </section>
-    </div>
+    <PageContainer className="max-w-screen-2xl">
+      <PageHeader title="Content" subtitle="Class → Subject → Chapter → Subtopic, exactly as students browse it." />
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+        <Card padding="p-3" className="shrink-0 lg:sticky lg:top-6 lg:w-80">
+          {(tree.data?.boards.length ?? 0) > 1 && (
+            <SelectField
+              label="Curriculum"
+              className="mb-3 px-1 pt-1"
+              value={boardId}
+              onChange={(e) => select({ board: e.target.value })}
+              options={(tree.data?.boards ?? []).map((b) => ({ value: b.id, label: b.name }))}
+            />
+          )}
+          {tree.isLoading && <SkeletonList rows={6} className="h-9" />}
+          {tree.error && <Notice tone="danger">Failed to load classes.</Notice>}
+          {tree.data && tree.data.boards.length === 0 && (
+            <Notice tone="warning">No curriculum (board) exists yet. Ask a super admin to create one.</Notice>
+          )}
+          {tree.data && boardId && (
+            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <TaxonomyTree boardId={boardId} classes={classes} selection={selection} onSelect={select} />
+            </div>
+          )}
+        </Card>
+        <section className="min-w-0 flex-1">
+          {tree.data && <SelectedPanel selection={selection} select={select} classes={classes} />}
+        </section>
+      </div>
+    </PageContainer>
   );
 }
 
@@ -80,47 +84,55 @@ function SelectedPanel({
   });
   const subtopic = flattenSubtopics(subtopics.data ?? []).find((s) => s.id === selection.subtopic);
 
-  if (!selection.class) return <EmptyState />;
+  if (!selection.class)
+    return (
+      <EmptyState
+        icon={<FolderTree size={22} />}
+        title="Pick something to manage"
+        message="Choose a class, subject, chapter or subtopic on the left. Everything for it (subtopics, content, resources, questions) is managed here."
+      />
+    );
   if (!cls) return <Missing what="class" onBack={() => select({})} />;
   if (!selection.subject) return <ClassPanel key={cls.id} cls={cls} onSelect={select} />;
   if (!subject) return <Missing what="subject" onBack={() => select({ class: cls.id })} />;
   if (!selection.chapter) return <SubjectPanel key={subject.id} cls={cls} subject={subject} onSelect={select} />;
 
   const subjectPath = { class: cls.id, subject: subject.id };
-  if (chapters.isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (chapters.isLoading) return <SkeletonList rows={4} />;
   if (!chapter) return <Missing what="chapter" onBack={() => select(subjectPath)} />;
   const crumb = `${cls.name} › ${subject.name}`;
   if (!selection.subtopic)
     return <ChapterPanel key={chapter.id} path={subjectPath} chapter={chapter} breadcrumb={crumb} onSelect={select} />;
 
-  if (subtopics.isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (subtopics.isLoading) return <SkeletonList rows={4} />;
   if (!subtopic) return <Missing what="subtopic" onBack={() => select({ ...subjectPath, chapter: chapter.id })} />;
   return (
-    <div className="space-y-3">
-      <button className="text-xs text-slate-500 hover:text-slate-900" onClick={() => select({ ...subjectPath, chapter: chapter.id })}>
-        ← {chapter.chapter_number}. {chapter.title}
-      </button>
+    <div className="space-y-4">
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={<ArrowLeft size={14} />}
+        className="-ml-2"
+        onClick={() => select({ ...subjectPath, chapter: chapter.id })}
+      >
+        {chapter.chapter_number}. {chapter.title}
+      </Button>
       <SubtopicPanel key={subtopic.id} subtopic={subtopic} breadcrumb={`${crumb} › Ch ${chapter.chapter_number}`} />
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
-      <p className="font-medium text-slate-700">Pick a class, subject, chapter or subtopic on the left.</p>
-      <p className="mt-1">Everything for that item (subtopics, content, resources, questions) is managed right here.</p>
     </div>
   );
 }
 
 function Missing({ what, onBack }: { what: string; onBack: () => void }) {
   return (
-    <div className="space-y-2 text-sm text-slate-500">
-      <p>This {what} no longer exists or was deleted.</p>
-      <button className="underline" onClick={onBack}>
-        Go back
-      </button>
-    </div>
+    <EmptyState
+      icon={<SearchX size={22} />}
+      title={`This ${what} no longer exists`}
+      message="It may have been deleted by someone else."
+      action={
+        <Button variant="secondary" size="sm" icon={<ArrowLeft size={14} />} onClick={onBack}>
+          Go back
+        </Button>
+      }
+    />
   );
 }

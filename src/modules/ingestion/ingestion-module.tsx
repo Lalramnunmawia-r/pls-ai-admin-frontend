@@ -2,15 +2,37 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BookOpen, GraduationCap, Upload } from "lucide-react";
 import { appApi } from "@/lib/api/client";
 import { requireText, validatePdfFile, validateYear } from "@/lib/forms/upload-validation";
+import { useFeedback } from "@/components/ui/feedback";
+import { FileField, SelectField, TextField } from "@/components/ui/form";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Notice, SectionTitle, SkeletonList } from "@/components/ui/layout";
+import { Badge } from "@/components/ui/badge";
 import { ModuleCard } from "../common/module-card";
 import { RecordTable } from "../common/record-table";
 import { StatusBadge } from "../common/status-badge";
 import { display, isRow, text, whenField } from "../common/display";
 
+const placeholder = (label: string) => ({ value: "", label });
+
+function UploadCardHeader({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-accent-soft text-accent">{icon}</span>
+      <div>
+        <p className="font-semibold text-ink">{title}</p>
+        <p className="mt-0.5 text-sm text-ink-muted">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
 export function IngestionModule() {
   const queryClient = useQueryClient();
+  const feedback = useFeedback();
 
   const [boardId, setBoardId] = useState("");
   const [classId, setClassId] = useState("");
@@ -19,8 +41,7 @@ export function IngestionModule() {
   const [publisher, setPublisher] = useState("");
   const [edition, setEdition] = useState("");
   const [textbookFile, setTextbookFile] = useState<File | null>(null);
-  const [textbookError, setTextbookError] = useState("");
-  const [textbookSuccess, setTextbookSuccess] = useState("");
+  const [textbookInputKey, setTextbookInputKey] = useState(0);
 
   const [examPrepId, setExamPrepId] = useState("");
   const [examPrepYearId, setExamPrepYearId] = useState("");
@@ -28,22 +49,15 @@ export function IngestionModule() {
   const [examPrepCalendarYear, setExamPrepCalendarYear] = useState("");
   const [examPrepTitle, setExamPrepTitle] = useState("");
   const [examPrepFile, setExamPrepFile] = useState<File | null>(null);
-  const [examPrepError, setExamPrepError] = useState("");
-  const [examPrepSuccess, setExamPrepSuccess] = useState("");
+  const [examPrepInputKey, setExamPrepInputKey] = useState(0);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["ingestion"],
     queryFn: () => appApi.ingestion("?skip=0&limit=20")
   });
   const textbooks = (data?.data.items ?? []).filter(isRow);
-  const taxonomy = useQuery({
-    queryKey: ["taxonomy-tree"],
-    queryFn: () => appApi.taxonomyTree()
-  });
-  const examPreps = useQuery({
-    queryKey: ["exam-preps"],
-    queryFn: () => appApi.examPreps()
-  });
+  const taxonomy = useQuery({ queryKey: ["taxonomy-tree"], queryFn: () => appApi.taxonomyTree() });
+  const examPreps = useQuery({ queryKey: ["exam-preps"], queryFn: () => appApi.examPreps() });
   const examPrepYears = useQuery({
     queryKey: ["exam-prep-years", examPrepId],
     queryFn: () => appApi.examPrepYears(examPrepId),
@@ -68,49 +82,43 @@ export function IngestionModule() {
     return all.filter((s) => !s.exam_prep_year_id || s.exam_prep_year_id === examPrepYearId);
   }, [examPrepSubjects.data, examPrepYearId]);
 
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["ingestion"] });
+    await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+  };
+
   const textbookUpload = useMutation({
     mutationFn: appApi.uploadTextbook,
     onSuccess: async () => {
-      setTextbookSuccess("Textbook upload queued.");
-      setTextbookError("");
+      feedback.success("Textbook upload queued.");
       setTextbookTitle("");
       setPublisher("");
       setEdition("");
       setTextbookFile(null);
-      await queryClient.invalidateQueries({ queryKey: ["ingestion"] });
-      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setTextbookInputKey((k) => k + 1);
+      await refresh();
     },
-    onError: (err) => {
-      setTextbookSuccess("");
-      setTextbookError(err instanceof Error ? err.message : "Upload failed");
-    }
+    onError: (err) => feedback.error(err, "Upload failed")
   });
 
   const examPrepUpload = useMutation({
     mutationFn: appApi.uploadExamPrepPaper,
     onSuccess: async () => {
-      setExamPrepSuccess("Exam prep upload queued.");
-      setExamPrepError("");
+      feedback.success("Exam prep upload queued.");
       setExamPrepTitle("");
       setExamPrepFile(null);
-      await queryClient.invalidateQueries({ queryKey: ["ingestion"] });
-      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setExamPrepInputKey((k) => k + 1);
+      await refresh();
     },
-    onError: (err) => {
-      setExamPrepSuccess("");
-      setExamPrepError(err instanceof Error ? err.message : "Upload failed");
-    }
+    onError: (err) => feedback.error(err, "Upload failed")
   });
 
+  const fail = (message: string) => feedback.error(new Error(message));
+
   const submitTextbookUpload = () => {
-    setTextbookError("");
-    setTextbookSuccess("");
-    if (!subjectId) return setTextbookError("Please select Board, Class, and Subject.");
-    const titleError = requireText(textbookTitle, "Title");
-    if (titleError) return setTextbookError(titleError);
-    const fileError = validatePdfFile(textbookFile);
-    if (fileError) return setTextbookError(fileError);
-    if (!textbookFile) return setTextbookError("PDF file is required.");
+    if (!subjectId) return fail("Please select Board, Class, and Subject.");
+    const problem = requireText(textbookTitle, "Title") ?? validatePdfFile(textbookFile);
+    if (problem || !textbookFile) return fail(problem ?? "PDF file is required.");
     textbookUpload.mutate({
       file: textbookFile,
       title: textbookTitle.trim(),
@@ -121,120 +129,33 @@ export function IngestionModule() {
   };
 
   const submitExamPrepUpload = () => {
-    setExamPrepError("");
-    setExamPrepSuccess("");
-    const year = Number(examPrepCalendarYear);
-    if (!examPrepId) return setExamPrepError("Exam is required.");
-    if (!examPrepYearId) return setExamPrepError("Exam year bucket is required.");
-    if (!examPrepSubjectId) return setExamPrepError("Subject is required.");
-    const titleError = requireText(examPrepTitle, "Title");
-    if (titleError) return setExamPrepError(titleError);
-    const fileError = validatePdfFile(examPrepFile);
-    if (fileError) return setExamPrepError(fileError);
-    const yearError = validateYear(examPrepCalendarYear);
-    if (yearError) return setExamPrepError(yearError);
-    if (!examPrepFile) return setExamPrepError("PDF file is required.");
+    if (!examPrepId) return fail("Exam is required.");
+    if (!examPrepYearId) return fail("Exam year bucket is required.");
+    if (!examPrepSubjectId) return fail("Subject is required.");
+    const problem = requireText(examPrepTitle, "Title") ?? validatePdfFile(examPrepFile) ?? validateYear(examPrepCalendarYear);
+    if (problem || !examPrepFile) return fail(problem ?? "PDF file is required.");
     examPrepUpload.mutate({
       file: examPrepFile,
       examPrepId,
       examPrepYearId,
       subjectId: examPrepSubjectId,
-      calendarYear: year,
+      calendarYear: Number(examPrepCalendarYear),
       title: examPrepTitle.trim()
     });
   };
 
   return (
-    <ModuleCard title="Ingestion Queue" description="Track textbook and exam-paper extraction progress.">
-      <div className="mb-5 space-y-5 rounded border bg-slate-50 p-3">
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-slate-800">Upload Textbook</h3>
-          <div className="grid gap-2 md:grid-cols-3">
-            <select
-              value={boardId}
-              onChange={(event) => {
-                setBoardId(event.target.value);
-                setClassId("");
-                setSubjectId("");
-              }}
-              className="rounded border px-3 py-2 text-sm"
-            >
-              <option value="">Select Board</option>
-              {boards.map((row) => (
-                <option key={row.board_id} value={row.board_id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={classId}
-              onChange={(event) => {
-                setClassId(event.target.value);
-                setSubjectId("");
-              }}
-              className="rounded border px-3 py-2 text-sm"
-              disabled={!boardId}
-            >
-              <option value="">Select Class</option>
-              {classes.map((row) => (
-                <option key={row.class_id} value={row.class_id}>
-                  {row.class_name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={subjectId}
-              onChange={(event) => setSubjectId(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              disabled={!classId}
-            >
-              <option value="">Select Subject</option>
-              {subjects.map((row) => (
-                <option key={row.subject_id} value={row.subject_id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <input
-              value={textbookTitle}
-              onChange={(event) => setTextbookTitle(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              placeholder="Title"
-            />
-            <input
-              value={publisher}
-              onChange={(event) => setPublisher(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              placeholder="Publisher (optional)"
-            />
-            <input
-              value={edition}
-              onChange={(event) => setEdition(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              placeholder="Edition (optional)"
-            />
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
-              onChange={(event) => setTextbookFile(event.target.files?.[0] ?? null)}
-              className="rounded border px-3 py-2 text-sm md:col-span-2"
-            />
-            <button
-              className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
-              disabled={textbookUpload.isPending}
-              onClick={submitTextbookUpload}
-            >
-              {textbookUpload.isPending ? "Uploading..." : "Upload Textbook"}
-            </button>
-          </div>
-          {textbookError && <p className="text-sm text-red-600">{textbookError}</p>}
-          {textbookSuccess && <p className="text-sm text-emerald-700">{textbookSuccess}</p>}
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-slate-800">Upload Exam Prep Paper</h3>
-          <div className="grid gap-2 md:grid-cols-3">
-            <select
+    <ModuleCard title="Exam Prep Uploads" description="Upload past exam papers and track textbook and paper extraction.">
+      <div className="mb-8 grid gap-5 xl:grid-cols-2">
+        <Card padding="p-5" className="space-y-4">
+          <UploadCardHeader
+            icon={<GraduationCap size={18} />}
+            title="Upload exam prep paper"
+            subtitle="Past papers for JEE, SMATEE and other exams. AI extracts each question."
+          />
+          <div className="grid gap-4 md:grid-cols-3">
+            <SelectField
+              label="Exam"
               value={examPrepId}
               onChange={(event) => {
                 setExamPrepId(event.target.value);
@@ -242,96 +163,106 @@ export function IngestionModule() {
                 setExamPrepSubjectId("");
                 setExamPrepCalendarYear("");
               }}
-              className="rounded border px-3 py-2 text-sm"
-            >
-              <option value="">Select Exam (JEE/SMATEE/etc.)</option>
-              {(examPreps.data ?? []).map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <select
+              options={[placeholder("Select exam"), ...(examPreps.data ?? []).map((row) => ({ value: row.id, label: row.name }))]}
+            />
+            <SelectField
+              label="Year bucket"
               value={examPrepYearId}
+              disabled={!examPrepId}
               onChange={(event) => {
                 const next = event.target.value;
                 setExamPrepYearId(next);
                 const selectedYear = (examPrepYears.data ?? []).find((x) => x.id === next);
                 setExamPrepCalendarYear(selectedYear ? String(selectedYear.calendar_year) : "");
               }}
-              className="rounded border px-3 py-2 text-sm"
-              disabled={!examPrepId}
-            >
-              <option value="">Select Year Bucket</option>
-              {(examPrepYears.data ?? []).map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.calendar_year}
-                </option>
-              ))}
-            </select>
-            <select
-              value={examPrepSubjectId}
-              onChange={(event) => setExamPrepSubjectId(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              disabled={!examPrepId}
-            >
-              <option value="">Select Subject</option>
-              {examPrepSubjectsFiltered.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <input
-              value={examPrepTitle}
-              onChange={(event) => setExamPrepTitle(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              placeholder="Paper title"
+              options={[
+                placeholder("Select year"),
+                ...(examPrepYears.data ?? []).map((row) => ({ value: row.id, label: String(row.calendar_year) }))
+              ]}
             />
-            <input
+            <SelectField
+              label="Subject"
+              value={examPrepSubjectId}
+              disabled={!examPrepId}
+              onChange={(event) => setExamPrepSubjectId(event.target.value)}
+              options={[placeholder("Select subject"), ...examPrepSubjectsFiltered.map((row) => ({ value: row.id, label: row.name }))]}
+            />
+            <TextField label="Paper title" className="md:col-span-2" value={examPrepTitle} onChange={(event) => setExamPrepTitle(event.target.value)} />
+            <TextField
+              label="Calendar year"
               value={examPrepCalendarYear}
               onChange={(event) => setExamPrepCalendarYear(event.target.value)}
-              className="rounded border px-3 py-2 text-sm"
-              placeholder={selectedExamPrepYear ? String(selectedExamPrepYear.calendar_year) : "Calendar year"}
+              placeholder={selectedExamPrepYear ? String(selectedExamPrepYear.calendar_year) : "e.g. 2024"}
             />
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
-              onChange={(event) => setExamPrepFile(event.target.files?.[0] ?? null)}
-              className="rounded border px-3 py-2 text-sm"
-            />
-            <button
-              className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60 md:col-span-3"
-              disabled={examPrepUpload.isPending}
-              onClick={submitExamPrepUpload}
-            >
-              {examPrepUpload.isPending ? "Uploading..." : "Upload Exam Prep Paper"}
-            </button>
           </div>
-          {examPrepError && <p className="text-sm text-red-600">{examPrepError}</p>}
-          {examPrepSuccess && <p className="text-sm text-emerald-700">{examPrepSuccess}</p>}
-        </section>
+          <FileField label="PDF" accept=".pdf,application/pdf" inputKey={examPrepInputKey} file={examPrepFile} onFile={setExamPrepFile} />
+          <Button variant="accent" icon={<Upload size={16} />} loading={examPrepUpload.isPending} onClick={submitExamPrepUpload}>
+            Upload paper
+          </Button>
+        </Card>
+
+        <Card padding="p-5" className="space-y-4">
+          <UploadCardHeader
+            icon={<BookOpen size={18} />}
+            title="Upload textbook"
+            subtitle="Tip: you can also do this from a subject in Content, without picking the class again."
+          />
+          <div className="grid gap-4 md:grid-cols-3">
+            <SelectField
+              label="Board"
+              value={boardId}
+              onChange={(event) => {
+                setBoardId(event.target.value);
+                setClassId("");
+                setSubjectId("");
+              }}
+              options={[placeholder("Select board"), ...boards.map((row) => ({ value: row.board_id, label: row.name }))]}
+            />
+            <SelectField
+              label="Class"
+              value={classId}
+              disabled={!boardId}
+              onChange={(event) => {
+                setClassId(event.target.value);
+                setSubjectId("");
+              }}
+              options={[placeholder("Select class"), ...classes.map((row) => ({ value: row.class_id, label: row.class_name }))]}
+            />
+            <SelectField
+              label="Subject"
+              value={subjectId}
+              disabled={!classId}
+              onChange={(event) => setSubjectId(event.target.value)}
+              options={[placeholder("Select subject"), ...subjects.map((row) => ({ value: row.subject_id, label: row.name }))]}
+            />
+            <TextField label="Title" value={textbookTitle} onChange={(event) => setTextbookTitle(event.target.value)} />
+            <TextField label="Publisher (optional)" value={publisher} onChange={(event) => setPublisher(event.target.value)} />
+            <TextField label="Edition (optional)" value={edition} onChange={(event) => setEdition(event.target.value)} />
+          </div>
+          <FileField label="PDF" accept=".pdf,application/pdf" inputKey={textbookInputKey} file={textbookFile} onFile={setTextbookFile} />
+          <Button variant="accent" icon={<Upload size={16} />} loading={textbookUpload.isPending} onClick={submitTextbookUpload}>
+            Upload textbook
+          </Button>
+        </Card>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-600">Loading ingestion queue...</p>}
-      {error && <p className="text-sm text-red-600">Failed to load ingestion data.</p>}
+      <SectionTitle trailing={data ? <Badge>{data.data.total}</Badge> : undefined}>Textbooks and papers</SectionTitle>
+      {isLoading && <SkeletonList rows={4} className="h-12" />}
+      {error && <Notice tone="danger">Failed to load ingestion data.</Notice>}
       {data && (
-        <div className="space-y-3">
-          <p className="text-sm text-slate-600">Total textbooks/papers: {data.data.total}</p>
-          <RecordTable
-            rows={textbooks}
-            empty="No textbooks found."
-            columns={[
-              { key: "title", label: "Title", render: (row) => display(text(row, "title")) },
-              { key: "hierarchy", label: "Hierarchy", render: (row) => display(text(row, "hierarchy_path")) },
-              { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
-              { key: "publisher", label: "Publisher", render: (row) => display(text(row, "publisher")) },
-              { key: "edition", label: "Edition", render: (row) => display(text(row, "edition")) },
-              { key: "pages", label: "Pages", render: (row) => display(text(row, "total_pages")) },
-              { key: "updated", label: "Updated", render: (row) => whenField(row, "updated_at", "created_at") }
-            ]}
-          />
-        </div>
+        <RecordTable
+          rows={textbooks}
+          empty="No textbooks found."
+          rowKey={(row, i) => text(row, "id") || String(i)}
+          columns={[
+            { key: "title", label: "Title", render: (row) => <span className="font-medium">{display(text(row, "title"))}</span> },
+            { key: "hierarchy", label: "Hierarchy", render: (row) => display(text(row, "hierarchy_path")) },
+            { key: "status", label: "Status", render: (row) => <StatusBadge status={text(row, "status")} /> },
+            { key: "publisher", label: "Publisher", render: (row) => display(text(row, "publisher")) },
+            { key: "pages", label: "Pages", render: (row) => display(text(row, "total_pages")) },
+            { key: "updated", label: "Updated", render: (row) => whenField(row, "updated_at", "created_at") }
+          ]}
+        />
       )}
     </ModuleCard>
   );

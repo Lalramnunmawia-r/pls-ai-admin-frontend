@@ -3,5 +3,20 @@
 @tailwind utilities;
 
 body {
-  @apply bg-slate-50 text-slate-900;
+  @apply bg-canvas font-sans text-ink;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(255, 69, 0, 0.45);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: #ff450033;
 }

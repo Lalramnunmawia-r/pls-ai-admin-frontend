@@ -1,9 +1,13 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { BookOpen, ChevronRight, Trash2 } from "lucide-react";
 import { contentApi, type V2Class } from "@/lib/api/admin-v2";
 import { useFeedback } from "@/components/ui/feedback";
-import { dangerButtonClass, EditableTitle, InlineAdd } from "@/components/ui/form";
+import { EditableTitle, InlineAdd } from "@/components/ui/form";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { EmptyState, PageHeader, SectionTitle } from "@/components/ui/layout";
 import type { Selection } from "../selection";
 
 export function ClassPanel({ cls, onSelect }: { cls: V2Class; onSelect: (next: Selection) => void }) {
@@ -35,47 +39,60 @@ export function ClassPanel({ cls, onSelect }: { cls: V2Class; onSelect: (next: S
   });
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Class</p>
-          <EditableTitle value={cls.name} onSave={(name) => rename.mutateAsync(name)} />
-        </div>
-        <button
-          className={dangerButtonClass}
-          onClick={async () => {
-            const ok = await feedback.confirm(
-              `Delete ${cls.name}? It disappears from the admin and from apps linked to its subjects.`,
-              { confirmLabel: "Delete", danger: true }
-            );
-            if (ok) remove.mutate();
-          }}
-        >
-          Delete class
-        </button>
-      </header>
+    <div>
+      <PageHeader
+        eyebrow="Class"
+        title={<EditableTitle value={cls.name} onSave={(name) => rename.mutateAsync(name)} />}
+        subtitle={`${cls.subjects.length} subject${cls.subjects.length === 1 ? "" : "s"}`}
+        actions={
+          <Button
+            variant="soft-danger"
+            size="sm"
+            icon={<Trash2 size={14} />}
+            loading={remove.isPending}
+            onClick={async () => {
+              const ok = await feedback.confirm(`Delete ${cls.name}? It disappears from the admin and from apps linked to its subjects.`, {
+                confirmLabel: "Delete",
+                danger: true
+              });
+              if (ok) remove.mutate();
+            }}
+          >
+            Delete class
+          </Button>
+        }
+      />
 
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Subjects</h3>
-        {cls.subjects.length === 0 && <p className="text-sm text-slate-500">No subjects yet.</p>}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <SectionTitle>Subjects</SectionTitle>
+      {cls.subjects.length === 0 ? (
+        <EmptyState icon={<BookOpen size={22} />} title="No subjects yet" message="Add the first subject for this class below." />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {cls.subjects.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => onSelect({ class: cls.id, subject: s.id })}
-              className="rounded-lg border p-3 text-left hover:border-slate-400 hover:bg-slate-50"
-            >
-              <div className="font-medium">{s.name}</div>
-              <div className="text-xs text-slate-500">
-                {s.chapter_count} chapter{s.chapter_count === 1 ? "" : "s"}
+            <Card key={s.id} interactive onClick={() => onSelect({ class: cls.id, subject: s.id })} className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-accent-soft text-accent">
+                <BookOpen size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-ink">{s.name}</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {s.chapter_count} chapter{s.chapter_count === 1 ? "" : "s"}
+                </p>
               </div>
-            </button>
+              <ChevronRight size={16} className="text-ink-subtle" />
+            </Card>
           ))}
         </div>
-        <div className="max-w-sm pt-1">
-          <InlineAdd placeholder="New subject name" autoFocus={false} busy={addSubject.isPending} onSubmit={(name) => addSubject.mutateAsync(name).catch(() => undefined)} />
-        </div>
-      </section>
+      )}
+      <div className="mt-4 max-w-md">
+        <InlineAdd
+          size="md"
+          placeholder="New subject name"
+          autoFocus={false}
+          busy={addSubject.isPending}
+          onSubmit={(name) => addSubject.mutateAsync(name).catch(() => undefined)}
+        />
+      </div>
     </div>
   );
 }

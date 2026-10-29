@@ -2,9 +2,14 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronUp, CornerDownRight, Eye, EyeOff, ListTree, Pencil, Plus } from "lucide-react";
 import { contentApi, moveId, qk, type V2Subtopic } from "@/lib/api/admin-v2";
 import { useFeedback } from "@/components/ui/feedback";
-import { ghostButtonClass, InlineAdd } from "@/components/ui/form";
+import { InlineAdd, inputClass } from "@/components/ui/form";
+import { Button, IconButton } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState, Notice, SkeletonList } from "@/components/ui/layout";
 
 /** Manage a chapter's subtopic tree: add (incl. nested), rename, reorder, hide/restore. */
 export function SubtopicsTab({ chapterId, onOpen }: { chapterId: string; onOpen: (subtopicId: string) => void }) {
@@ -39,8 +44,7 @@ export function SubtopicsTab({ chapterId, onOpen }: { chapterId: string; onOpen:
     onError: (err) => feedback.error(err, "Update failed")
   });
   const reorder = useMutation({
-    mutationFn: (input: { ids: string[]; parentId: string | null }) =>
-      contentApi.reorderSubtopics(chapterId, input.ids, input.parentId),
+    mutationFn: (input: { ids: string[]; parentId: string | null }) => contentApi.reorderSubtopics(chapterId, input.ids, input.parentId),
     onSuccess: (tree) => queryClient.setQueryData(qk.subtopics(chapterId), tree),
     onError: (err) => feedback.error(err, "Reorder failed")
   });
@@ -48,61 +52,58 @@ export function SubtopicsTab({ chapterId, onOpen }: { chapterId: string; onOpen:
   const renderLevel = (nodes: V2Subtopic[], parentId: string | null, depth: number): React.ReactNode => {
     const ids = nodes.map((n) => n.id);
     return (
-      <ul className={depth === 0 ? "divide-y rounded-lg border" : "border-l pl-4"}>
+      <div className={depth === 0 ? "divide-y divide-line" : "ml-6 border-l border-line"}>
         {nodes.map((node, index) => (
-          <li key={node.id} className={depth === 0 ? "px-3 py-2" : "py-1.5"}>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div key={node.id}>
+            <div className={`flex flex-wrap items-center gap-2 py-2 pr-3 text-sm ${depth === 0 ? "pl-2" : "pl-3"}`}>
               <div className="flex flex-col">
-                <button
-                  aria-label="Move up"
-                  className="text-[10px] leading-none text-slate-400 hover:text-slate-900 disabled:opacity-20"
+                <IconButton
+                  label="Move up"
+                  size={20}
                   disabled={index === 0 || reorder.isPending}
                   onClick={() => {
                     const next = moveId(ids, node.id, -1);
                     if (next) reorder.mutate({ ids: next, parentId });
                   }}
                 >
-                  ▲
-                </button>
-                <button
-                  aria-label="Move down"
-                  className="text-[10px] leading-none text-slate-400 hover:text-slate-900 disabled:opacity-20"
+                  <ChevronUp size={13} />
+                </IconButton>
+                <IconButton
+                  label="Move down"
+                  size={20}
                   disabled={index === nodes.length - 1 || reorder.isPending}
                   onClick={() => {
                     const next = moveId(ids, node.id, 1);
                     if (next) reorder.mutate({ ids: next, parentId });
                   }}
                 >
-                  ▼
-                </button>
+                  <ChevronDown size={13} />
+                </IconButton>
               </div>
+              {depth > 0 && <CornerDownRight size={14} className="shrink-0 text-ink-subtle" />}
               {renaming === node.id ? (
-                <div className="flex-1">
-                  <RenameInput
-                    initial={node.title}
-                    onCancel={() => setRenaming(null)}
-                    onSave={(title) => update.mutate({ id: node.id, title })}
-                  />
+                <div className="min-w-[12rem] flex-1">
+                  <RenameInput initial={node.title} onCancel={() => setRenaming(null)} onSave={(title) => update.mutate({ id: node.id, title })} />
                 </div>
               ) : (
                 <button
-                  className={`min-w-0 flex-1 truncate text-left hover:underline ${node.hidden ? "text-slate-400" : ""}`}
+                  className={`min-w-0 flex-1 truncate text-left font-medium hover:text-accent ${node.hidden ? "text-ink-subtle" : "text-ink"}`}
                   onClick={() => onOpen(node.id)}
                 >
-                  {node.section_number && <span className="text-slate-400">{node.section_number} </span>}
+                  {node.section_number && <span className="mr-1 tabular-nums text-ink-subtle">{node.section_number}</span>}
                   {node.title}
-                  {node.hidden && <span className="ml-2 text-[10px] uppercase">hidden</span>}
+                  {node.hidden && <Badge className="ml-2">hidden</Badge>}
                 </button>
               )}
-              <div className="flex gap-1">
-                <button className={ghostButtonClass} onClick={() => setRenaming(node.id)}>
-                  Rename
-                </button>
-                <button className={ghostButtonClass} onClick={() => setAddingUnder(node.id)}>
-                  + Sub
-                </button>
-                <button
-                  className={ghostButtonClass}
+              <div className="flex items-center gap-0.5">
+                <IconButton label="Rename" onClick={() => setRenaming(node.id)}>
+                  <Pencil size={14} />
+                </IconButton>
+                <IconButton label="Add sub-subtopic" onClick={() => setAddingUnder(node.id)}>
+                  <Plus size={15} />
+                </IconButton>
+                <IconButton
+                  label={node.hidden ? "Show to students" : "Hide from students"}
                   disabled={update.isPending}
                   onClick={async () => {
                     if (!node.hidden) {
@@ -115,15 +116,15 @@ export function SubtopicsTab({ chapterId, onOpen }: { chapterId: string; onOpen:
                     update.mutate({ id: node.id, hidden: !node.hidden });
                   }}
                 >
-                  {node.hidden ? "Restore" : "Hide"}
-                </button>
+                  {node.hidden ? <Eye size={15} /> : <EyeOff size={15} />}
+                </IconButton>
               </div>
             </div>
             {(node.children.length > 0 || addingUnder === node.id) && (
-              <div className="mt-1.5">
+              <div className="pb-2">
                 {node.children.length > 0 && renderLevel(node.children, node.id, depth + 1)}
                 {addingUnder === node.id && (
-                  <div className="mt-1.5 pl-4">
+                  <div className="ml-6 mt-1 border-l border-line pl-3">
                     <InlineAdd
                       placeholder={`New subtopic under "${node.title}"`}
                       busy={create.isPending}
@@ -134,34 +135,41 @@ export function SubtopicsTab({ chapterId, onOpen }: { chapterId: string; onOpen:
                 )}
               </div>
             )}
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     );
   };
 
-  if (subtopics.isLoading) return <p className="text-sm text-slate-500">Loading subtopics…</p>;
-  if (subtopics.error) return <p className="text-sm text-red-600">Failed to load subtopics.</p>;
+  if (subtopics.isLoading) return <SkeletonList rows={5} className="h-12" />;
+  if (subtopics.error) return <Notice tone="danger">Failed to load subtopics.</Notice>;
   const roots = subtopics.data ?? [];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {roots.length === 0 ? (
-        <p className="text-sm text-slate-500">No subtopics yet. Add the first one below, or upload a textbook PDF on the subject.</p>
-      ) : (
-        renderLevel(roots, null, 0)
-      )}
-      {addingUnder === "root" ? (
-        <InlineAdd
-          placeholder="New subtopic title"
-          busy={create.isPending}
-          onCancel={() => setAddingUnder(null)}
-          onSubmit={(title) => create.mutateAsync({ title, parentId: null }).catch(() => undefined)}
+        <EmptyState
+          icon={<ListTree size={22} />}
+          title="No subtopics yet"
+          message="Add the first one below, or upload a textbook PDF on the subject to generate them."
         />
       ) : (
-        <button className={ghostButtonClass} onClick={() => setAddingUnder("root")}>
-          + Add subtopic
-        </button>
+        <Card padding="p-1.5">{renderLevel(roots, null, 0)}</Card>
+      )}
+      {addingUnder === "root" ? (
+        <div className="max-w-xl">
+          <InlineAdd
+            size="md"
+            placeholder="New subtopic title"
+            busy={create.isPending}
+            onCancel={() => setAddingUnder(null)}
+            onSubmit={(title) => create.mutateAsync({ title, parentId: null }).catch(() => undefined)}
+          />
+        </div>
+      ) : (
+        <Button variant="accent" size="sm" icon={<Plus size={14} />} onClick={() => setAddingUnder("root")}>
+          Add subtopic
+        </Button>
       )}
     </div>
   );
@@ -171,7 +179,7 @@ function RenameInput({ initial, onSave, onCancel }: { initial: string; onSave: (
   const [value, setValue] = useState(initial);
   return (
     <form
-      className="flex gap-1"
+      className="flex items-center gap-1.5"
       onSubmit={(e) => {
         e.preventDefault();
         const trimmed = value.trim();
@@ -184,11 +192,11 @@ function RenameInput({ initial, onSave, onCancel }: { initial: string; onSave: (
         autoFocus
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && onCancel()}
-        className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
+        className={`${inputClass} h-9 min-w-0 flex-1`}
       />
-      <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+      <Button type="submit" size="sm">
         Save
-      </button>
+      </Button>
     </form>
   );
 }

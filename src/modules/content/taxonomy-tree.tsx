@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight, Dot, Plus } from "lucide-react";
 import { contentApi, qk, type V2Class, type V2Subtopic } from "@/lib/api/admin-v2";
 import { useFeedback } from "@/components/ui/feedback";
 import { InlineAdd } from "@/components/ui/form";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/layout";
 import type { Selection } from "./selection";
 
 type Props = {
@@ -14,37 +17,31 @@ type Props = {
   onSelect: (next: Selection) => void;
 };
 
+const INDENT = 14;
+
 function Caret({ open, onClick, hidden }: { open: boolean; onClick: () => void; hidden?: boolean }) {
-  if (hidden) return <span className="inline-block w-4" />;
+  if (hidden) return <Dot size={16} className="shrink-0 opacity-40" aria-hidden />;
   return (
     <button
       aria-label={open ? "Collapse" : "Expand"}
       onClick={onClick}
-      className="inline-flex w-4 shrink-0 justify-center text-xs text-slate-400 hover:text-slate-800"
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-subtle hover:bg-surface hover:text-ink"
     >
-      {open ? "▾" : "▸"}
+      {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
     </button>
   );
 }
 
-function Row({
-  depth,
-  active,
-  muted,
-  children
-}: {
-  depth: number;
-  active: boolean;
-  muted?: boolean;
-  children: React.ReactNode;
-}) {
+/** Same look as the sidebar nav items: accent-soft when selected. */
+function Row({ depth, active, muted, children }: { depth: number; active: boolean; muted?: boolean; children: React.ReactNode }) {
   return (
     <div
-      className={`flex items-center gap-1 rounded py-1 pr-1 text-sm ${active ? "bg-slate-900 text-white" : "hover:bg-slate-100"} ${
-        muted && !active ? "text-slate-400" : ""
+      className={`group relative flex h-9 items-center gap-1 rounded-control pr-2 text-sm transition-colors ${
+        active ? "bg-accent-soft font-medium text-accent" : muted ? "text-ink-subtle hover:bg-surface-muted" : "text-ink/85 hover:bg-surface-muted hover:text-ink"
       }`}
-      style={{ paddingLeft: depth * 14 + 4 }}
+      style={{ paddingLeft: depth * INDENT + 6 }}
     >
+      {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-accent" aria-hidden />}
       {children}
     </div>
   );
@@ -52,7 +49,7 @@ function Row({
 
 function AddRow({ depth, children }: { depth: number; children: React.ReactNode }) {
   return (
-    <div className="py-1 pr-1" style={{ paddingLeft: depth * 14 + 22 }}>
+    <div className="py-1 pr-1" style={{ paddingLeft: depth * INDENT + 26 }}>
       {children}
     </div>
   );
@@ -60,8 +57,11 @@ function AddRow({ depth, children }: { depth: number; children: React.ReactNode 
 
 function AddLink({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="text-xs text-slate-500 hover:text-slate-900">
-      + {label}
+    <button
+      onClick={onClick}
+      className="inline-flex h-7 items-center gap-1 rounded-control px-1.5 text-xs font-semibold text-accent hover:bg-accent-soft"
+    >
+      <Plus size={13} /> Add {label}
     </button>
   );
 }
@@ -116,13 +116,14 @@ export function TaxonomyTree({ boardId, classes, selection, onSelect }: Props) {
 
   return (
     <nav aria-label="Content tree" className="space-y-0.5">
-      {classes.length === 0 && <p className="px-2 py-1 text-sm text-slate-500">No classes yet.</p>}
+      <p className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Classes</p>
+      {classes.length === 0 && <p className="px-2 py-1 text-sm text-ink-muted">No classes yet.</p>}
       {classes.map((cls) => (
         <div key={cls.id}>
           <Row depth={0} active={selection.class === cls.id && !selection.subject}>
             <Caret open={isOpen(cls.id)} onClick={() => toggle(cls.id)} />
             <button
-              className="min-w-0 flex-1 truncate text-left font-medium"
+              className="min-w-0 flex-1 truncate text-left font-semibold"
               onClick={() => {
                 expand(cls.id);
                 onSelect({ class: cls.id });
@@ -146,7 +147,7 @@ export function TaxonomyTree({ boardId, classes, selection, onSelect }: Props) {
                     >
                       {subject.name}
                     </button>
-                    <span className="text-xs opacity-60">{subject.chapter_count}</span>
+                    <Badge>{subject.chapter_count}</Badge>
                   </Row>
                   {isOpen(subject.id) && (
                     <SubjectChapters
@@ -170,7 +171,7 @@ export function TaxonomyTree({ boardId, classes, selection, onSelect }: Props) {
                     onSubmit={(name) => createSubject.mutateAsync({ classId: cls.id, name }).catch(() => undefined)}
                   />
                 ) : (
-                  <AddLink label="Subject" onClick={() => setAdding(`subject:${cls.id}`)} />
+                  <AddLink label="subject" onClick={() => setAdding(`subject:${cls.id}`)} />
                 )}
               </AddRow>
             </>
@@ -186,7 +187,7 @@ export function TaxonomyTree({ boardId, classes, selection, onSelect }: Props) {
             onSubmit={(name) => createClass.mutateAsync(name).catch(() => undefined)}
           />
         ) : (
-          <AddLink label="Class" onClick={() => setAdding("class")} />
+          <AddLink label="class" onClick={() => setAdding("class")} />
         )}
       </AddRow>
     </nav>
@@ -227,8 +228,14 @@ function SubjectChapters({
     onError: (err) => feedback.error(err, "Could not add chapter")
   });
 
-  if (chapters.isLoading) return <p className="py-1 pl-10 text-xs text-slate-400">Loading…</p>;
-  if (chapters.error) return <p className="py-1 pl-10 text-xs text-red-600">Failed to load chapters</p>;
+  if (chapters.isLoading)
+    return (
+      <div className="space-y-1 py-1" style={{ paddingLeft: 2 * INDENT + 6 }}>
+        <Skeleton className="h-7" />
+        <Skeleton className="h-7" />
+      </div>
+    );
+  if (chapters.error) return <p className="py-1 text-xs text-danger" style={{ paddingLeft: 2 * INDENT + 26 }}>Failed to load chapters</p>;
 
   return (
     <>
@@ -244,19 +251,13 @@ function SubjectChapters({
                 onSelect({ class: classId, subject: subjectId, chapter: chapter.id });
               }}
             >
-              <span className="opacity-60">{chapter.chapter_number}.</span> {chapter.title}
+              <span className="tabular-nums opacity-60">{chapter.chapter_number}.</span> {chapter.title}
             </button>
-            {!chapter.is_active && <span className="text-[10px] uppercase">hidden</span>}
-            {chapter.textbook_status !== "approved" && (
-              <span className="text-[10px] uppercase text-amber-600">{chapter.textbook_status}</span>
-            )}
+            {!chapter.is_active && <Badge>hidden</Badge>}
+            {chapter.textbook_status !== "approved" && <Badge tone="warning">{chapter.textbook_status}</Badge>}
           </Row>
           {isOpen(chapter.id) && (
-            <ChapterSubtopics
-              path={{ class: classId, subject: subjectId, chapter: chapter.id }}
-              selection={selection}
-              onSelect={onSelect}
-            />
+            <ChapterSubtopics path={{ class: classId, subject: subjectId, chapter: chapter.id }} selection={selection} onSelect={onSelect} />
           )}
         </div>
       ))}
@@ -269,7 +270,7 @@ function SubjectChapters({
             onSubmit={(title) => create.mutateAsync(title).catch(() => undefined)}
           />
         ) : (
-          <AddLink label="Chapter" onClick={() => setAdding(true)} />
+          <AddLink label="chapter" onClick={() => setAdding(true)} />
         )}
       </AddRow>
     </>
@@ -286,20 +287,21 @@ function ChapterSubtopics({
   onSelect: (next: Selection) => void;
 }) {
   const subtopics = useQuery({ queryKey: qk.subtopics(path.chapter), queryFn: () => contentApi.subtopics(path.chapter) });
-  if (subtopics.isLoading) return <p className="py-1 pl-14 text-xs text-slate-400">Loading…</p>;
-  if (subtopics.error) return <p className="py-1 pl-14 text-xs text-red-600">Failed to load subtopics</p>;
+  if (subtopics.isLoading)
+    return (
+      <div className="py-1" style={{ paddingLeft: 3 * INDENT + 6 }}>
+        <Skeleton className="h-7" />
+      </div>
+    );
+  if (subtopics.error) return <p className="py-1 text-xs text-danger" style={{ paddingLeft: 3 * INDENT + 26 }}>Failed to load subtopics</p>;
 
   const renderNodes = (nodes: V2Subtopic[], depth: number): React.ReactNode =>
     nodes.map((node) => (
       <div key={node.id}>
         <Row depth={depth} active={selection.subtopic === node.id} muted={node.hidden}>
-          <span className="inline-block w-4 text-center text-xs opacity-40">•</span>
-          <button
-            className="min-w-0 flex-1 truncate text-left"
-            title={node.title}
-            onClick={() => onSelect({ ...path, subtopic: node.id })}
-          >
-            {node.section_number && <span className="opacity-60">{node.section_number} </span>}
+          <Dot size={16} className="shrink-0 opacity-40" aria-hidden />
+          <button className="min-w-0 flex-1 truncate text-left" title={node.title} onClick={() => onSelect({ ...path, subtopic: node.id })}>
+            {node.section_number && <span className="tabular-nums opacity-60">{node.section_number} </span>}
             {node.title}
           </button>
         </Row>

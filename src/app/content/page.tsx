@@ -10,7 +10,7 @@ export default function ContentPage() {
     <RequireAuth>
       <AppShell>
         {/* useSearchParams (selection in the URL) needs a Suspense boundary in the app router. */}
-        <Suspense fallback={<p className="text-sm text-slate-500">Loading…</p>}>
+        <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
           <ContentModule />
         </Suspense>
       </AppShell>

@@ -1,6 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+// Toasts + a promise-based confirm dialog. Visuals follow lushaiedu_pls_web Toast.tsx and
+// ConfirmDialog in Modal.tsx.
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { CircleAlert, CircleCheck, X } from "lucide-react";
+import { Button } from "./button";
 
 type Toast = { id: number; tone: "success" | "error"; message: string };
 type ConfirmRequest = { message: string; confirmLabel: string; danger: boolean; resolve: (ok: boolean) => void };
@@ -17,72 +21,97 @@ export function errorMessage(error: unknown, fallback = "Something went wrong"):
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-/** Toasts + a promise-based confirm dialog, replacing per-page success/error state and window.confirm. */
 export function FeedbackProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pending, setPending] = useState<ConfirmRequest | null>(null);
   const nextId = useRef(1);
 
-  const push = useCallback((tone: Toast["tone"], message: string) => {
-    const id = nextId.current++;
-    setToasts((current) => [...current, { id, tone, message }]);
-    window.setTimeout(() => setToasts((current) => current.filter((t) => t.id !== id)), tone === "error" ? 7000 : 3500);
-  }, []);
+  const dismiss = useCallback((id: number) => setToasts((current) => current.filter((t) => t.id !== id)), []);
+  const push = useCallback(
+    (tone: Toast["tone"], message: string) => {
+      const id = nextId.current++;
+      setToasts((current) => [...current, { id, tone, message }]);
+      window.setTimeout(() => dismiss(id), tone === "error" ? 7000 : 3500);
+    },
+    [dismiss]
+  );
 
   const api: FeedbackApi = {
     success: (message) => push("success", message),
     error: (error, fallback) => push("error", errorMessage(error, fallback)),
     confirm: (message, options) =>
       new Promise<boolean>((resolve) =>
-        setPending({
-          message,
-          confirmLabel: options?.confirmLabel ?? "Confirm",
-          danger: options?.danger ?? false,
-          resolve
-        })
+        setPending({ message, confirmLabel: options?.confirmLabel ?? "Confirm", danger: options?.danger ?? false, resolve })
       )
   };
 
-  const settle = (ok: boolean) => {
-    pending?.resolve(ok);
-    setPending(null);
-  };
+  const settle = useCallback(
+    (ok: boolean) => {
+      pending?.resolve(ok);
+      setPending(null);
+    },
+    [pending]
+  );
+
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && settle(false);
+    window.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [pending, settle]);
 
   return (
     <FeedbackContext.Provider value={api}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
+      <div className="pointer-events-none fixed inset-x-4 bottom-4 z-[80] flex flex-col items-center gap-2 md:inset-x-auto md:bottom-6 md:right-6 md:items-end">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             role="status"
-            className={`pointer-events-auto rounded-md px-4 py-3 text-sm shadow-lg ${
-              toast.tone === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+            className={`pointer-events-auto flex w-full max-w-sm items-start gap-2.5 rounded-card px-4 py-3 text-sm font-medium shadow-overlay ${
+              toast.tone === "success" ? "bg-ink text-white" : "bg-danger text-white"
             }`}
           >
-            {toast.message}
+            {toast.tone === "success" ? (
+              <CircleCheck size={18} className="mt-px shrink-0" aria-hidden />
+            ) : (
+              <CircleAlert size={18} className="mt-px shrink-0" aria-hidden />
+            )}
+            <span className="min-w-0 flex-1">{toast.message}</span>
+            <button aria-label="Dismiss" onClick={() => dismiss(toast.id)} className="shrink-0 opacity-70 hover:opacity-100">
+              <X size={16} />
+            </button>
           </div>
         ))}
       </div>
       {pending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => settle(false)}>
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[2px]"
+          onClick={() => settle(false)}
+        >
           <div
             role="alertdialog"
             aria-modal="true"
-            className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
+            aria-labelledby="confirm-title"
+            className="w-full max-w-md rounded-card border border-line bg-surface p-5 shadow-overlay outline-none sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="text-sm text-slate-800">{pending.message}</p>
+            <h2 id="confirm-title" className="text-lg font-semibold tracking-tight text-ink">
+              {pending.danger ? "Are you sure?" : "Please confirm"}
+            </h2>
+            <p className="mt-2 text-sm text-ink-muted">{pending.message}</p>
             <div className="mt-5 flex justify-end gap-2">
-              <button className="rounded border px-3 py-1.5 text-sm" onClick={() => settle(false)} autoFocus>
+              <Button variant="secondary" onClick={() => settle(false)} autoFocus>
                 Cancel
-              </button>
-              <button
-                className={`rounded px-3 py-1.5 text-sm text-white ${pending.danger ? "bg-red-600" : "bg-slate-900"}`}
-                onClick={() => settle(true)}
-              >
+              </Button>
+              <Button variant={pending.danger ? "danger" : "primary"} onClick={() => settle(true)}>
                 {pending.confirmLabel}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

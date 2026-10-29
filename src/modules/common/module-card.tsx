@@ -1,19 +1,23 @@
 "use client";
 
+import { PageContainer, PageHeader } from "@/components/ui/layout";
+
+/** Standard page frame: container + header. Kept for the non-Content pages. */
 export function ModuleCard({
   title,
   description,
+  actions,
   children
 }: {
   title: string;
   description: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border bg-white p-4">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="mt-1 text-sm text-slate-600">{description}</p>
-      <div className="mt-4">{children}</div>
-    </section>
+    <PageContainer>
+      <PageHeader title={title} subtitle={description} actions={actions} />
+      {children}
+    </PageContainer>
   );
 }

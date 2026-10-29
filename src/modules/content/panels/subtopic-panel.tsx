@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, EyeOff } from "lucide-react";
 import { contentApi, qk, type V2Subtopic } from "@/lib/api/admin-v2";
 import { useFeedback } from "@/components/ui/feedback";
-import { EditableTitle, ghostButtonClass } from "@/components/ui/form";
+import { EditableTitle } from "@/components/ui/form";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/layout";
 import { Tabs } from "@/components/ui/tabs";
 import { BlocksTab } from "../tabs/blocks-tab";
 import { ResourcesTab } from "../tabs/resources-tab";
@@ -30,42 +34,42 @@ export function SubtopicPanel({ subtopic, breadcrumb }: { subtopic: V2Subtopic; 
 
   const counts = summary.data;
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">
-            {breadcrumb} · Subtopic {subtopic.section_number ?? ""}
-          </p>
-          <EditableTitle value={subtopic.title} onSave={(title) => update.mutateAsync({ title })} />
-          {subtopic.hidden && (
-            <span className="mt-1 inline-block rounded bg-slate-200 px-1.5 py-0.5 text-xs uppercase text-slate-600">hidden from students</span>
-          )}
-        </div>
-        <button
-          className={ghostButtonClass}
-          disabled={update.isPending}
-          onClick={async () => {
-            if (!subtopic.hidden) {
-              const ok = await feedback.confirm(`Hide "${subtopic.title}" from students? Content is kept.`, { confirmLabel: "Hide" });
-              if (!ok) return;
-            }
-            update.mutate({ hidden: !subtopic.hidden });
-          }}
-        >
-          {subtopic.hidden ? "Restore subtopic" : "Hide subtopic"}
-        </button>
-      </header>
-
-      <Tabs<TabKey>
-        active={tab}
-        onChange={setTab}
-        tabs={[
-          { key: "content", label: "Content", count: counts?.content_blocks },
-          { key: "resources", label: "Resources", count: counts?.resources },
-          { key: "questions", label: "Quiz questions", count: counts?.quiz_questions },
-          { key: "reports", label: "Reports" }
-        ]}
+    <div>
+      <PageHeader
+        eyebrow={`${breadcrumb} · Subtopic ${subtopic.section_number ?? ""}`}
+        title={<EditableTitle value={subtopic.title} onSave={(title) => update.mutateAsync({ title })} />}
+        subtitle={subtopic.hidden ? <Badge>hidden from students</Badge> : undefined}
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={subtopic.hidden ? <Eye size={14} /> : <EyeOff size={14} />}
+            loading={update.isPending}
+            onClick={async () => {
+              if (!subtopic.hidden) {
+                const ok = await feedback.confirm(`Hide "${subtopic.title}" from students? Content is kept.`, { confirmLabel: "Hide" });
+                if (!ok) return;
+              }
+              update.mutate({ hidden: !subtopic.hidden });
+            }}
+          >
+            {subtopic.hidden ? "Restore subtopic" : "Hide subtopic"}
+          </Button>
+        }
       />
+
+      <div className="mb-5">
+        <Tabs<TabKey>
+          active={tab}
+          onChange={setTab}
+          tabs={[
+            { key: "content", label: "Content", count: counts?.content_blocks },
+            { key: "resources", label: "Resources", count: counts?.resources },
+            { key: "questions", label: "Quiz questions", count: counts?.quiz_questions },
+            { key: "reports", label: "Reports" }
+          ]}
+        />
+      </div>
 
       {tab === "content" && <BlocksTab subtopicId={subtopic.id} />}
       {tab === "resources" && <ResourcesTab chapterId={subtopic.chapter_id} subtopicId={subtopic.id} />}
