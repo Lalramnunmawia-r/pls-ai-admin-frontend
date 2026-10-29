@@ -7,11 +7,9 @@ import { authApi } from "../lib/api/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/library", label: "Library" },
-  { href: "/ingestion", label: "Ingestion" },
-  { href: "/questions", label: "Question Bank" },
-  { href: "/resources", label: "Resources" },
-  { href: "/reports", label: "Reports" },
+  { href: "/content", label: "Content" },
+  // Exam-prep papers still upload here until they get their own subject → chapter → subtopic tab.
+  { href: "/ingestion", label: "Exam Prep Uploads" },
   { href: "/settings", label: "Settings" }
 ];
 
@@ -21,13 +19,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-4 py-3">
           <div className="text-lg font-semibold">LMS AI Admin</div>
           <div className="text-sm text-slate-600">{session?.user.email ?? "Guest"}</div>
         </div>
       </header>
-      <div className="mx-auto grid max-w-7xl grid-cols-12 gap-4 px-4 py-4">
-        <aside className="col-span-12 rounded-lg border bg-white p-3 md:col-span-3">
+      <div className="mx-auto grid max-w-screen-2xl grid-cols-12 gap-4 px-4 py-4">
+        <aside className="col-span-12 rounded-lg border bg-white p-3 md:col-span-2">
           <nav className="space-y-2">
             {navItems.map((item) => (
               <Link
@@ -52,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             Sign Out
           </button>
         </aside>
-        <main className="col-span-12 rounded-lg border bg-white p-4 md:col-span-9">{children}</main>
+        <main className="col-span-12 rounded-lg border bg-white p-4 md:col-span-10">{children}</main>
       </div>
     </div>
   );

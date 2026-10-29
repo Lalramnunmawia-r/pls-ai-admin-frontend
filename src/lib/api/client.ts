@@ -117,57 +117,66 @@ async function parseApiError(response: Response): Promise<string> {
   return `Request failed (${response.status})`;
 }
 
-async function withAuth<T>(path: string, init?: RequestInit): Promise<T> {
+let refreshInFlight: Promise<boolean> | null = null;
+
+/** Refresh once for all concurrent 401s; on failure the session is cleared. */
+async function refreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const session = getSession();
+      if (!session?.refreshToken) return false;
+      try {
+        const refreshed = await authApi.refresh(session.refreshToken);
+        setSession({ ...session, accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken });
+        return true;
+      } catch {
+        clearSession();
+        return false;
+      }
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function authorized(send: (accessToken: string) => Promise<Response>, retried = false): Promise<Response> {
   const session = getSession();
   if (!session) throw new Error("Not authenticated");
-  const response = await request(path, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-      ...(init?.headers ?? {})
-    }
-  });
-  if (response.status === 401 && session.refreshToken) {
-    const refreshed = await authApi.refresh(session.refreshToken);
-    setSession({
-      ...session,
-      accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken
-    });
-    return withAuth<T>(path, init);
+  const response = await send(session.accessToken);
+  if (response.status === 401 && !retried && (await refreshSession())) {
+    return authorized(send, true);
   }
   if (!response.ok) {
     if (response.status === 401) clearSession();
     throw new Error(await parseApiError(response));
   }
+  return response;
+}
+
+export async function withAuth<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await authorized((token) =>
+    request(path, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) }
+    })
+  );
   return (await readJson(response)) as T;
 }
 
-async function withAuthFormData<T>(path: string, body: FormData, init?: Omit<RequestInit, "body">): Promise<T> {
-  const session = getSession();
-  if (!session) throw new Error("Not authenticated");
-  const response = await request(path, {
-    ...init,
-    method: init?.method ?? "POST",
-    body,
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-      ...(omitContentType(init?.headers) ?? {})
-    }
-  });
-  if (response.status === 401 && session.refreshToken) {
-    const refreshed = await authApi.refresh(session.refreshToken);
-    setSession({
-      ...session,
-      accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken
-    });
-    return withAuthFormData<T>(path, body, init);
-  }
-  if (!response.ok) {
-    if (response.status === 401) clearSession();
-    throw new Error(await parseApiError(response));
-  }
+export async function withAuthFormData<T>(
+  path: string,
+  body: FormData,
+  init?: Omit<RequestInit, "body">
+): Promise<T> {
+  const response = await authorized((token) =>
+    fetch(`${apiBaseUrl}${path}`, {
+      ...init,
+      method: init?.method ?? "POST",
+      body,
+      headers: { Authorization: `Bearer ${token}`, ...(omitContentType(init?.headers) ?? {}) }
+    })
+  );
   return (await readJson(response)) as T;
 }
 
@@ -211,11 +220,6 @@ export const appApi = {
       method: "POST",
       body: JSON.stringify(input)
     }),
-  library: async (query = "") => {
-    const raw = await withAuth<unknown>(`/admin/subjects${query}`);
-    const items = asArray(raw);
-    return { data: { items, count: items.length } };
-  },
   ingestion: async (query = "") => {
     const raw = await withAuth<Record<string, unknown>>(`/admin/textbooks${query}`);
     const items = asArray(raw);
