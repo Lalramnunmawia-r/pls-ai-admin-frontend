@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, Notice, SkeletonList } from "@/components/ui/layout";
 import { StatusBadge } from "../../common/status-badge";
+import { isPyq } from "@/lib/pyq";
 
 type Kind = "file" | "youtube" | "link";
 
@@ -112,7 +113,8 @@ export function ResourcesTab({ chapterId, subtopicId }: { chapterId: string; sub
     add.mutate();
   };
 
-  const rows = resources.data ?? [];
+  // PYQ documents are managed (and indexed differently) in their own tab.
+  const rows = (resources.data ?? []).filter((row) => !isPyq(row));
 
   return (
     <div className="space-y-5">

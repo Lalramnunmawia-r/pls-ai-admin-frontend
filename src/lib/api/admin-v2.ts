@@ -78,16 +78,51 @@ export type Resource = {
   id: string;
   chapter_id: string;
   section_id: string | null;
+  /** "section" when the admin tagged a subtopic; "chapter" for whole-chapter uploads. */
+  resource_scope?: string;
   title: string;
   resource_type: string;
   label: string;
   status: string;
   pinecone_vectors: number;
   file_url: string | null;
+  /** PDF rendition students read in the browser (converted copy for Word/PowerPoint). */
+  view_pdf_url?: string | null;
   thumbnail_url: string | null;
   youtube_url: string | null;
   metadata_text: string | null;
   external_url: string | null;
+};
+
+/** One subject's slice of a class PYQ booklet (what students read and ask about). */
+export type PyqPart = {
+  id: string;
+  booklet_id: string | null;
+  title: string;
+  subject_name: string;
+  subject_id: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  total_pages: number | null;
+  status: string;
+  pinecone_vectors: number;
+  view_pdf_url: string | null;
+};
+
+/** A class-level PYQ booklet; the worker splits it into per-subject parts. */
+export type PyqBooklet = {
+  id: string;
+  grade_id: string | null;
+  title: string;
+  resource_type: string;
+  status: string;
+  pinecone_vectors: number;
+  total_pages: number | null;
+  file_url: string | null;
+  view_pdf_url: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  parts: PyqPart[];
 };
 
 export type QuizQuestion = {
@@ -223,6 +258,11 @@ export const contentApi = {
     withAuth<QuizQuestion>(`/admin/quiz-questions/${id}`, json("PUT", input)),
   deleteQuestion: (id: string) => withAuth<unknown>(`/admin/quiz-questions/${id}`, json("DELETE")),
 
+  // PYQ booklets (one per class, split per subject by the worker). Delete / retry reuse the resource endpoints.
+  pyqs: (classId: string) => withAuth<PyqBooklet[]>(`/admin/pyqs?grade_id=${classId}`),
+  uploadPyq: (input: { classId: string; title: string; file: File }) =>
+    withAuthFormData<PyqBooklet>("/admin/pyqs", form({ file: input.file, title: input.title, grade_id: input.classId })),
+
   // Resources
   resources: (chapterId: string, subtopicId?: string) =>
     withAuth<Resource[]>(`${v2}/chapters/${chapterId}/resources${subtopicId ? `?subtopic_id=${subtopicId}` : ""}`),
@@ -310,7 +350,8 @@ export const qk = {
   practiceItems: (setId: string) => ["v2", "practice-items", setId] as const,
   helpers: (chapterId: string) => ["v2", "helpers", chapterId] as const,
   reports: (chapterId: string, subtopicId?: string) => ["v2", "reports", chapterId, subtopicId ?? "all"] as const,
-  textbooks: (subjectId: string) => ["v2", "textbooks", subjectId] as const
+  textbooks: (subjectId: string) => ["v2", "textbooks", subjectId] as const,
+  pyqs: (classId: string) => ["v2", "pyqs", classId] as const
 };
 
 /** Depth-first flatten, used for pickers and lookups. */

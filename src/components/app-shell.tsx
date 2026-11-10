@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BookOpen, FileUp, LayoutDashboard, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
+import { BookOpen, FileQuestion, FileUp, LayoutDashboard, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
 import { clearSession, getSession } from "../lib/auth/session";
 import { authApi } from "../lib/api/client";
 import { IconButton } from "./ui/button";
@@ -16,7 +16,8 @@ const sections: { title: string; links: NavLink[] }[] = [
     title: "Overview",
     links: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/content", label: "Content", icon: BookOpen }
+      { href: "/content", label: "Content", icon: BookOpen },
+      { href: "/pyqs", label: "PYQs", icon: FileQuestion }
     ]
   },
   {
