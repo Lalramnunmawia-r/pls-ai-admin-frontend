@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, MessageCircle } from "lucide-react";
 import { contentApi, qk, type V2Chapter } from "@/lib/api/admin-v2";
 import { useFeedback } from "@/components/ui/feedback";
 import { EditableTitle } from "@/components/ui/form";
@@ -16,6 +16,9 @@ import { SubtopicsTab } from "../tabs/subtopics-tab";
 import { ResourcesTab } from "../tabs/resources-tab";
 import { HelpersTab, PracticeTab } from "../tabs/chapter-pdfs-tab";
 import { ReportsTab } from "../tabs/reports-tab";
+
+// Student tutor app (pls-ai-student-frontend). Review chapters open there only in its test mode.
+const STUDENT_APP_URL = (process.env.NEXT_PUBLIC_STUDENT_APP_URL || "http://localhost:3004").replace(/\/+$/, "");
 
 type TabKey = "subtopics" | "resources" | "practice" | "helpers" | "reports";
 
@@ -61,6 +64,23 @@ export function ChapterPanel({
           </span>
         }
         actions={
+          <span className="flex flex-wrap items-center gap-2">
+          {chapter.is_active && ["approved", "review"].includes(chapter.textbook_status) ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<MessageCircle size={14} />}
+              onClick={() =>
+                window.open(
+                  `${STUDENT_APP_URL}/learn/${chapter.subject_id}/${chapter.id}?n=${chapter.chapter_number}`,
+                  "_blank",
+                  "noopener"
+                )
+              }
+            >
+              Open in AI tutor
+            </Button>
+          ) : null}
           <Button
             variant="secondary"
             size="sm"
@@ -76,6 +96,7 @@ export function ChapterPanel({
           >
             {chapter.is_active ? "Hide chapter" : "Restore chapter"}
           </Button>
+          </span>
         }
       />
 
